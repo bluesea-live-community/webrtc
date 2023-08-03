@@ -33,6 +33,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 @property(nonatomic, assign) BOOL isRunning;
 // Will the session be running once all asynchronous operations have been completed?
 @property(nonatomic, assign) BOOL willBeRunning;
+@property(nonatomic, assign) BOOL willBeMirror;
 @end
 
 @implementation RTC_OBJC_TYPE (RTCCameraVideoCapturer) {
@@ -53,6 +54,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 @synthesize hasRetriedOnFatalError = _hasRetriedOnFatalError;
 @synthesize isRunning = _isRunning;
 @synthesize willBeRunning = _willBeRunning;
+@synthesize willBeMirror = _willBeMirror;
 
 - (instancetype)init {
   return [self initWithDelegate:nil captureSession:[[AVCaptureSession alloc] init]];
@@ -142,8 +144,9 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 
 - (void)startCaptureWithDevice:(AVCaptureDevice *)device
                         format:(AVCaptureDeviceFormat *)format
-                           fps:(NSInteger)fps {
-  [self startCaptureWithDevice:device format:format fps:fps completionHandler:nil];
+                           fps:(NSInteger)fps
+                           mirror:(BOOL)mirror {
+  [self startCaptureWithDevice:device format:format fps:fps mirror:mirror completionHandler:nil];
 }
 
 - (void)stopCapture {
@@ -153,8 +156,10 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 - (void)startCaptureWithDevice:(AVCaptureDevice *)device
                         format:(AVCaptureDeviceFormat *)format
                            fps:(NSInteger)fps
+                           mirror:(BOOL)mirror
              completionHandler:(nullable void (^)(NSError *_Nullable error))completionHandler {
   _willBeRunning = YES;
+  _willBeMirror = mirror;
   [RTC_OBJC_TYPE(RTCDispatcher)
       dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
                     block:^{
@@ -287,6 +292,29 @@ const int64_t kNanosecondsPerSecond = 1000000000;
   // No rotation on Mac.
   _rotation = RTCVideoRotation_0;
 #endif
+
+  if (_willBeMirror) { //TODO working with rotation
+    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+    int planes = CVPixelBufferGetPlaneCount(pixelBuffer);
+
+    //flip image by swap the left and right of the image
+    for (int plane = 0; plane < planes; plane++) {
+      uint8_t *baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, plane);
+      size_t height = CVPixelBufferGetHeightOfPlane(pixelBuffer, plane);
+      // size_t width = CVPixelBufferGetWidthOfPlane(pixelBuffer, plane);
+      size_t bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, plane);
+      for (size_t y = 0; y < height / 2; y++) {
+        uint8_t *row1 = baseAddress + y * bytesPerRow;
+        uint8_t *row2 = baseAddress + (height - y - 1) * bytesPerRow;
+        for (size_t x = 0; x < bytesPerRow; x++) {
+          uint8_t temp = row1[x];
+          row1[x] = row2[x];
+          row2[x] = temp;
+        }
+      }
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+  }
 
   RTC_OBJC_TYPE(RTCCVPixelBuffer) *rtcPixelBuffer =
       [[RTC_OBJC_TYPE(RTCCVPixelBuffer) alloc] initWithPixelBuffer:pixelBuffer];
