@@ -111,17 +111,23 @@ bool VoiceProcessingAudioUnit::Init() {
     return false;
   }
 
-  // Enable input on the input scope of the input element.
-  UInt32 enable_input = 1;
-  result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
-                                kAudioUnitScope_Input, kInputBus, &enable_input,
-                                sizeof(enable_input));
-  if (result != noErr) {
-    DisposeAudioUnit();
-    RTCLogError(@"Failed to enable input on input scope of input element. "
-                 "Error=%ld.",
-                (long)result);
-    return false;
+  AVAudioSession* audio_session =  [AVAudioSession sharedInstance];
+  if (audio_session.mode != AVAudioSessionModeMoviePlayback) {
+    NSLog(@"Setting up input audio for Non-Playback session %@", audio_session.mode);
+    // Enable input on the input scope of the input element.
+    UInt32 enable_input = 1;
+    result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
+                                  kAudioUnitScope_Input, kInputBus, &enable_input,
+                                  sizeof(enable_input));
+    if (result != noErr) {
+      DisposeAudioUnit();
+      RTCLogError(@"Failed to enable input on input scope of input element. "
+                  "Error=%ld.",
+                  (long)result);
+      return false;
+    }
+  } else {
+    NSLog(@"Dont setup input audio for Playback session %@", audio_session.mode);
   }
 
   // Enable output on the output scope of the output element.
